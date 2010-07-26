@@ -127,7 +127,9 @@ Class Packager {
 		if (empty($ref)) return $file;
 		
 		preg_match("@ref: ([\w\./-]+)@", $ref, $matches);
-		if (!empty($matches)) $ref = file_get_contents($package_path . ".git/" . $matches[1]);
+		if (!empty($matches)) $ref = @file_get_contents($package_path . ".git/" . $matches[1]);
+		if (empty($ref)) return $file;
+
 		preg_match("@([\w\./-]+)@", $ref, $matches);
 		return str_replace("%build%", $matches[1], $file);
 	}
