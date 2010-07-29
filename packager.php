@@ -118,16 +118,19 @@ Class Packager {
 		$length = count($exploded);
 		if ($length == 1) return array($default, $exploded[0]);
 		if (empty($exploded[0])) return array($default, $exploded[1]);
-		return array($exploded[0], $exploded[1]);
+		list($package, $version) = explode(':', $exploded[0]);
+		return array($package, $exploded[1]);
 	}
 	
 	private function replace_build($package_path, $file){
 		$ref = @file_get_contents($package_path . '.git/HEAD');
 		if (empty($ref)) return $file;
 		
-		preg_match("@ref: ([\w\.-/]+)@", $ref, $matches);
-		$ref = file_get_contents($package_path . ".git/" . $matches[1]);
-		preg_match("@([\w\.-/]+)@", $ref, $matches);
+		preg_match("@ref: ([\w\./-]+)@", $ref, $matches);
+		if (!empty($matches)) $ref = @file_get_contents($package_path . ".git/" . $matches[1]);
+		if (empty($ref)) return $file;
+
+		preg_match("@([\w\./-]+)@", $ref, $matches);
 		return str_replace("%build%", $matches[1], $file);
 	}
 	
