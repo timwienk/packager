@@ -118,8 +118,9 @@ Class Packager {
 		$length = count($exploded);
 		if ($length == 1) return array($default, $exploded[0]);
 		if (empty($exploded[0])) return array($default, $exploded[1]);
-		list($package, $version) = explode(':', $exploded[0]);
-		return array($package, $exploded[1]);
+		$package = explode(':', $exploded[0]);
+		//if (!empty($package[1])) $version = $package[1];
+		return array($package[0], $exploded[1]);
 	}
 	
 	private function replace_build($package_path, $file){
