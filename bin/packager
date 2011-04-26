@@ -14,7 +14,7 @@ if ($a0 == '-h' || $a0 == '--help'){
 
 $home = exec('echo $HOME');
 
-$packages = YAML::decode_file("$home/.packages.yml");
+$packages = Packager::yaml_decode_file("$home/.packages.yml");
 if (empty($packages)) $packages = array();
 
 switch ($command){
@@ -34,7 +34,7 @@ switch ($command){
 
 		$packages[$name] = $path;
 
-		file_put_contents("$home/.packages.yml", YAML::encode($packages));
+		file_put_contents("$home/.packages.yml", Packager::yaml_encode($packages));
 
 		Packager::warn("the package $name has been registered as $path\n");
 	break;
@@ -49,7 +49,7 @@ switch ($command){
 
 		unset($packages[$name]);
 
-		file_put_contents("$home/.packages.yml", YAML::encode($packages));
+		file_put_contents("$home/.packages.yml", Packager::yaml_encode($packages));
 
 		Packager::warn("the package $name has been unregistered\n");
 	break;
@@ -125,7 +125,7 @@ switch ($command){
 		$paths = array();
 
 		foreach ($packages as $name => $path){
-			if (!$selected['use-only'] || array_contains($selected['use-only'], $name)) $paths[] = $path;
+			if (!$selected['use-only'] || in_array($name, $selected['use-only'])) $paths[] = $path;
 		}
 
 		$pkg = new Packager($paths);
@@ -140,19 +140,19 @@ switch ($command){
 		$components = $selected['components'];
 		$blocks = $selected['blocks'];
 
-		foreach ($components as $component){
+		foreach ($components as $key => $component){
 			preg_match($re, $component, $matches);
 			if (!empty($matches)){
-				array_erase($components, $component);
-				array_include($wildcards, $matches[1]);
+				array_splice($components, $key, 1);
+				if (!in_array($matches[1], $wildcards)) $wildcards[] = $matches[1];
 			}
 		}
 
-		foreach ($files as $file){
+		foreach ($files as $key => $file){
 			preg_match($re, $file, $matches);
 			if (!empty($matches)){
-				array_erase($files, $file);
-				array_include($wildcards, $matches[1]);
+				array_splice($files, $key, 1);
+				if (!in_array($matches[1], $wildcards)) $wildcards[] = $matches[1];
 			}
 		}
 

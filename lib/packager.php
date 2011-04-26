@@ -1,15 +1,8 @@
 <?php
 
-require dirname(__FILE__) . '/misc/yaml.php';
-require dirname(__FILE__) . '/misc/array.php';
+require_once dirname(__FILE__) . '/packager_base.php';
 
-Class Packager {
-
-	public static function warn($message){
-		$std_err = fopen('php://stderr', 'w');
-		fwrite($std_err, $message);
-		fclose($std_err);
-	}
+class Packager extends Packager_base {
 
 	private $packages = array();
 	private $manifests = array();
@@ -43,8 +36,8 @@ Class Packager {
 			$manifest_format = $pathinfo['extension'];
 		}
 
-		if ($manifest_format == 'json') $manifest = json_decode(file_get_contents($manifest_path), true);
-		else if ($manifest_format == 'yaml' || $manifest_format == 'yml') $manifest = YAML::decode_file($manifest_path);
+		if ($manifest_format == 'json') $manifest = self::json_decode_file($manifest_path);
+		else if ($manifest_format == 'yaml' || $manifest_format == 'yml') $manifest = self::yaml_decode_file($manifest_path);
 
 		if (empty($manifest)) throw new Exception("manifest not found in $package_path, or unable to parse manifest.");
 
@@ -52,7 +45,7 @@ Class Packager {
 
 		if ($this->root == null) $this->root = $package_name;
 
-		if (array_has($this->manifests, $package_name)) return;
+		if (array_key_exists($package_name, $this->manifests)) return;
 
 		$manifest['path'] = $package_path;
 		$manifest['manifest'] = $manifest_path;
@@ -71,7 +64,7 @@ Class Packager {
 			// get contents of first comment
 			preg_match('/\/\*\s*^---(.*?)^\.\.\.\s*\*\//ms', $source, $matches);
 
-			if (!empty($matches)) $descriptor = YAML::decode($matches[0]);
+			if (!empty($matches)) $descriptor = self::yaml_decode($matches[0]);
 
 			// populate / convert to array requires and provides
 			$requires = (array)(!empty($descriptor['requires']) ? $descriptor['requires'] : array());
@@ -80,9 +73,9 @@ Class Packager {
 
 			// "normalization" for requires. Fills up the default package name from requires, if not present.
 			foreach ($requires as $i => $require)
-				$requires[$i] = implode('/', $this->parse_name($package_name, $require));
+				$requires[$i] = implode('/', $this->parse_name($require, $package_name));
 
-			$license = array_get($descriptor, 'license');
+			$license = self::array_get($descriptor, 'license');
 
 			$this->packages[$package_name][$file_name] = array_merge($descriptor, array(
 				'package' => $package_name,
@@ -91,7 +84,7 @@ Class Packager {
 				'source' => $source,
 				'path' => $path,
 				'package/name' => $package_name . '/' . $file_name,
-				'license' => empty($license) ? array_get($manifest, 'license') : $license
+				'license' => empty($license) ? self::array_get($manifest, 'license') : $license
 			));
 
 		}
@@ -108,16 +101,6 @@ Class Packager {
 
 	// # private UTILITIES
 
-	private function parse_name($default, $name){
-		$exploded = explode('/', $name);
-		$length = count($exploded);
-		if ($length == 1) return array($default, $exploded[0]);
-		if (empty($exploded[0])) return array($default, $exploded[1]);
-		$package = explode(':', $exploded[0]);
-		//if (!empty($package[1])) $version = $package[1];
-		return array($package[0], $exploded[1]);
-	}
-
 	private function replace_build($package_path, $file){
 		$ref = @file_get_contents($package_path . '.git/HEAD');
 		if (empty($ref)) return $file;
@@ -133,8 +116,8 @@ Class Packager {
 	// # private HASHES
 
 	private function component_to_hash($name){
-		$pair = $this->parse_name($this->root, $name);
-		$package = array_get($this->packages, $pair[0]);
+		$pair = $this->parse_name($name, $this->root);
+		$package = self::array_get($this->packages, $pair[0]);
 
 		if (!empty($package)){
 			$component = $pair[1];
@@ -150,8 +133,8 @@ Class Packager {
 	}
 
 	private function file_to_hash($name){
-		$pair = $this->parse_name($this->root, $name);
-		$package = array_get($this->packages, $pair[0]);
+		$pair = $this->parse_name($name, $this->root);
+		$package = self::array_get($this->packages, $pair[0]);
 
 		if (!empty($package)){
 			$file_name = $pair[1];
@@ -173,7 +156,7 @@ Class Packager {
 	}
 
 	public function package_exists($name){
-		return array_contains($this->get_packages(), $name);
+		return in_array($name, $this->get_packages());
 	}
 
 	public function validate($more_files = array(), $more_components = array(), $more_packages = array()){
@@ -204,12 +187,12 @@ Class Packager {
 	public function resolve_files($files = array(), $components = array(), $packages = array()){
 		if (!empty($components)){
 			$more = $this->components_to_files($components);
-			foreach ($more as $file) array_include($files, $file);
+			foreach ($more as $file) if (!in_array($file, $files)) $files[] = $file;
 		}
 
 		foreach ($packages as $package){
 			$more = $this->get_all_files($package);
-			foreach ($more as $file) array_include($files, $file);
+			foreach ($more as $file) if (!in_array($file, $files)) $files[] = $file;
 		}
 
 		return $this->complete_files($files);
@@ -279,7 +262,7 @@ Class Packager {
 		$files = $this->get_file_dependancies($file);
 		$hash = $this->file_to_hash($file);
 		if (empty($hash)) return array();
-		array_include($files, $hash['package/name']);
+		if (!in_array($hash['package/name'], $files)) $files[] = $hash['package/name'];
 		return $files;
 	}
 
@@ -287,7 +270,7 @@ Class Packager {
 		$ordered_files = array();
 		foreach ($files as $file){
 			$all_files = $this->complete_file($file);
-			foreach ($all_files as $one_file) array_include($ordered_files, $one_file);
+			foreach ($all_files as $one_file) if (!in_array($one_file, $ordered_files)) $ordered_files[] = $one_file;
 		}
 		return $ordered_files;
 	}
@@ -295,7 +278,7 @@ Class Packager {
 	// # public COMPONENTS
 
 	public function component_to_file($component){
-		return array_get($this->component_to_hash($component), 'package/name');
+		return self::array_get($this->component_to_hash($component), 'package/name');
 	}
 
 	public function components_to_files($components){
@@ -311,18 +294,18 @@ Class Packager {
 
 	public function __call($method, $arguments){
 		if (strpos($method, 'get_file_') === 0){
-			$file = array_get($arguments, 0);
+			$file = self::array_get($arguments, 0);
 			if (empty($file)) return null;
 			$key = substr($method, 9);
 			$hash = $this->file_to_hash($file);
-			return array_get($hash, $key);
+			return self::array_get($hash, $key);
 		}
 
 		if (strpos($method, 'get_package_') === 0){
 			$key = substr($method, 12);
-			$package = array_get($arguments, 0);
-			$package = array_get($this->manifests, (empty($package)) ? $this->root : $package);
-			return array_get($package, $key);
+			$package = self::array_get($arguments, 0);
+			$package = self::array_get($this->manifests, (empty($package)) ? $this->root : $package);
+			return self::array_get($package, $key);
 		}
 
 		return null;
@@ -336,23 +319,16 @@ Class Packager {
 
 	public function get_package_authors($package = null){
 		if (empty($package)) $package = $this->root;
-		$package = array_get($this->manifests, $package);
+		$package = self::array_get($this->manifests, $package);
 		if (empty($package)) return array();
-		return $this->normalize_authors(array_get($package, 'authors'), array_get($package, 'author'));
+		return $this->normalize_authors($package);
 	}
 
 	public function get_file_authors($file){
 		$hash = $this->file_to_hash($file);
 		if (empty($hash)) return array();
-		return $this->normalize_authors(array_get($hash, 'authors'), array_get($hash, 'author'), $this->get_package_authors());
-	}
-
-	private function normalize_authors($authors = null, $author = null, $default = null){
-		$use = empty($authors) ? $author : $authors;
-		if (empty($use) && !empty($default)) return $default;
-		if (is_array($use)) return $use;
-		if (empty($use)) return array();
-		return array($use);
+		$authors = $this->normalize_authors($hash);
+		return (empty($authors) ? $this->get_package_authors() : $authors);
 	}
 
 }
