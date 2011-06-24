@@ -8,9 +8,9 @@ class Source extends Packager_base {
 	public $provides;
 	public $requires;
 
-	private const MANIFEST_REGEX = '/\/\*\s*^---(.*?)^(?:\.\.\.|---)\s*\*\//ms';
-	private const BLOCK_REGEX = '/(\/[\/*])\s*<%1>(.*?)<\/%1>(?:\s*\*\/)?/s';
-	private const NAME_REGEX = '/^.*\/|\.[^.]+$/';
+	const MANIFEST_REGEX = '/\/\*\s*^---(.*?)^(?:\.\.\.|---)\s*\*\//ms';
+	const BLOCK_REGEX = '/(\/[\/*])\s*<%1>(.*?)<\/%1>(?:\s*\*\/)?/s';
+	const NAME_REGEX = '/^.*\/|\.[^.]+$/';
 
 	private $package;
 	private $path;
@@ -21,16 +21,13 @@ class Source extends Packager_base {
 	public function __construct($path, $package = null){
 		$this->set_path($path);
 		$this->set_package($package);
-		$this->add_processors(array(
-			array($this, 'replace_blocks'),
-			array($this, 'replace_build')
-		));
+		$this->add_processor(array($this, 'replace_blocks'));
 	}
 
-	public function __call($method){
+	public function __call($method, $arguments){
 		if (strpos($method, 'get_') === 0){
 			$property = substr($method, 4);
-			return (empty($manifest[$property]) ? null : $manifest[$property]);
+			return (empty($this->manifest[$property]) ? null : $this->manifest[$property]);
 		}
 
 		trigger_error('Call to undefined method: ' . get_class($this) . '::' . $method . '()', E_USER_ERROR);
@@ -79,16 +76,23 @@ class Source extends Packager_base {
 		$this->source = file_get_contents($path);
 	}
 
-	protected function parse_manifest(){
+	protected function read_manifest(){
+		$manifest = null;
+
 		preg_match(self::MANIFEST_REGEX, $this->source, $matches);
-		if (empty($matches)) trigger_error('Error parsing manifest in: ' . $this->source, E_USER_ERROR);
-		$manifest = self::yaml_decode($matches[0]);
+		if (!empty($matches) && !empty($matches[1])) $manifest = self::yaml_decode($matches[1]);
+
+		return $manifest;
+	}
+
+	protected function parse_manifest(){
+		$manifest = $this->read_manifest();
 
 		if (empty($manifest)) trigger_error('Error parsing manifest in: ' . $this->source, E_USER_ERROR);
 		if (empty($manifest['name'])) $manifest['name'] = preg_replace(self::NAME_REGEX, '', $this->path);
 		$manifest['path'] = $this->path;
-		$manifest['provides'] = array_map(array($this, 'parse_name'), (array) $this->get_provides());
-		$manifest['requires'] = array_map(array($this, 'parse_name'), (array) $this->get_requires());
+		$manifest['provides'] = array_map(array($this, 'parse_name'), (array) $manifest['provides']);
+		$manifest['requires'] = array_map(array($this, 'parse_name'), (array) $manifest['requires']);
 
 		$authors = $this->normalize_authors($manifest);
 		$manifest['authors'] = $authors;
@@ -96,27 +100,8 @@ class Source extends Packager_base {
 
 		$this->manifest = $manifest;
 		$this->name = $this->get_name();
-		$this->provides = $this->get_provides();
-		$this->requires = $this->get_requires();
-	}
-
-	protected function replace_build($source){
-		if (!$this->package || !$this->package->directory) return $source;
-		$ref = $this->package->directory . '.git/HEAD';
-
-		if (!is_readable($ref)) return $source;
-		$ref = file_get_contents($ref);
-
-		preg_match('/ref: ([\w\.\/-]+)/', $ref, $matches);
-		if (empty($matches)) return $source;
-		$ref = $this->directory . '.git/' . $matches[1];
-
-		if (!is_readable($ref)) return $source;
-		$ref = file_get_contents($ref);
-
-		preg_match('/([\w\.\/-]+)/', $ref, $matches);
-		if (empty($matches)) return $source;
-		return str_replace('%build%', $matches[1], $source);
+		$this->provides = (array) $this->get_provides();
+		$this->requires = (array) $this->get_requires();
 	}
 
 	protected function replace_blocks($source){
@@ -124,6 +109,7 @@ class Source extends Packager_base {
 			$regex = str_replace('%1', $block, self::BLOCK_REGEX);
 			$source = preg_replace_callback($regex, array($this, 'block_replacement'), $source);
 		}
+		return $source;
 	}
 
 	private function block_replacement($matches){

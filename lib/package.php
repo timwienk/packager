@@ -16,15 +16,16 @@ class Package extends Packager_base {
 	private $paths;
 	private $unparsed_paths;
 	private $sources = array();
-	private $sources_bu_paths = array();
+	private $sources_by_paths = array();
 	private $components = array();
 
 	public function __construct($path){
 		$this->set_path($path);
 		$this->parse_manifest();
+		$this->add_processor(array($this, 'replace_build'));
 	}
 
-	public function __call($method){
+	public function __call($method, $arguments){
 		if (strpos($method, 'get_') === 0){
 			$property = substr($method, 4);
 			return (empty($this->manifest[$property]) ? null : $this->manifest[$property]);
@@ -102,14 +103,20 @@ class Package extends Packager_base {
 
 	public function add_source($source){
 		if (is_string($source)) {
-			if (!in_array($source, $this->paths)) $source = new Source($source, $this);
+			$path = $source;
+			if (in_array($path, $this->paths)){
+				$source = $this->instantiate_source($this->directory . '/' . $path, $this);
+			} else {
+				$source = $this->instantiate_source($path, $this);
+			}
 		} elseif (!in_array($source->path, $this->paths)) {
 			$source->set_package($this);
+			$path = $source->get_path();
 		}
 
 		if (isset($source) && !array_key_exists($source->name, $this->sources)){
 			$this->sources[$source->name] =& $source;
-			$this->sources_by_paths[$source->path] =& $source;
+			$this->sources_by_paths[$path] =& $source;
 		}
 
 		return $this;
@@ -148,6 +155,7 @@ class Package extends Packager_base {
 	# Dependancies:
 
 	public function resolve_source($source){
+		echo "\n" . $source->name . "\n";
 		$resolved_sources = array();
 
 		foreach ($source->requires as $component){
@@ -165,7 +173,7 @@ class Package extends Packager_base {
 
 		foreach ($sources as $source){
 			if (!in_array($source, $resolved_sources)) {
-				foreach ($this->resolve_source($resolved_source) as $resolved_source){
+				foreach ($this->resolve_source($source) as $resolved_source){
 					if (!in_array($resolved_source, $resolved_sources)) $resolved_sources[] = $resolved_source;
 				}
 			}
@@ -298,7 +306,8 @@ class Package extends Packager_base {
 		$this->directory = $directory;
 	}
 
-	protected function parse_manifest(){
+	protected function read_manifest(){
+		$manifest = null;
 		$extension = pathinfo($this->path, PATHINFO_EXTENSION);
 
 		switch ($extension){
@@ -316,6 +325,12 @@ class Package extends Packager_base {
 				trigger_error('Could not determine manifest format: ' . $this->path, E_USER_ERROR);
 
 		}
+
+		return $manifest;
+	}
+
+	protected function parse_manifest(){
+		$manifest = $this->read_manifest();
 
 		if (empty($manifest)) trigger_error('Error parsing manifest: ' . $this->path, E_USER_ERROR);
 		if (empty($manifest['sources'])) $manifest['sources'] = array();
@@ -335,16 +350,21 @@ class Package extends Packager_base {
 
 	protected function parse_sourcename($name){
 		while ($path = array_shift($this->unparsed_paths)){
-			$this->add_source($this->directory . '/' . $path);
-			if ($source->name == $name) break;
+			$this->parse_sourcepath($path);
+			if (array_key_exists($name, $this->sources)) break;
 		}
 	}
 
 	protected function parse_sourcepath($path){
-		while ($unparsed_path = array_shift($this->unparsed_paths)){
-			$this->add_source($this->directory . '/' . $unparsed_path);
-			if ($source->name == $name) break;
+		$key = array_search($path, $this->unparsed_paths);
+		if ($key !== false){
+			$this->add_source($path);
+			array_splice($this->unparsed_paths, $key, 1);
 		}
+	}
+
+	protected function instantiate_source($path, $package){
+		return new Source($path, $package);
 	}
 
 	protected function parse_components($source = null){
@@ -358,6 +378,25 @@ class Package extends Packager_base {
 				if (!in_array($component, $this->components)) $this->components[] = $component;
 			}
 		}
+	}
+
+	protected function replace_build($source){
+		if (!$this->directory) return $source;
+		$ref = $this->directory . '/.git/HEAD';
+
+		if (!is_readable($ref)) return $source;
+		$ref = file_get_contents($ref);
+
+		preg_match('/ref: ([\w\.\/-]+)/', $ref, $matches);
+		if (empty($matches)) return $source;
+		$ref = $this->directory . '/.git/' . $matches[1];
+
+		if (!is_readable($ref)) return $source;
+		$ref = file_get_contents($ref);
+
+		preg_match('/([\w\.\/-]+)/', $ref, $matches);
+		if (empty($matches)) return $source;
+		return str_replace('%build%', $matches[1], $source);
 	}
 
 }
