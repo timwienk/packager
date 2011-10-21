@@ -12,7 +12,7 @@ Constructor
 The constructor of this class accepts either a path to a package or a list of path to packages. `package.yml` must not be included in the path.
 
 ### Example
-	
+
 	$pkg = new Packager("/Users/kamicane/Sites/mootools-core/");
 	$pkg = new Packager(array("/Users/kamicane/Sites/mootools-core/", "/Users/kamicane/Sites/mootools-more/"));
 
@@ -69,7 +69,7 @@ Class usage
 ### Example
 
 	$pkg = new Packager("/Users/kamicane/Sites/mootools-core/");
-	
+
 	$pkg->write_from_components("/Users/kamicane/Sites/mootools.js", array('Type', 'Array'));
 
 Packager Command Line script
@@ -92,13 +92,13 @@ The Packager command line script is your one-stop solution to build any of your 
 * `build` builds a single file with the supplied packages / files / components
 
 ### Registering a Package
-	
+
 #### Example
 
 	./packager register /Users/kamicane/mootools-core
 	» the package Core has been registered
 
-	
+
 ### Listing Packages
 
 #### Example
@@ -113,48 +113,48 @@ The Packager command line script is your one-stop solution to build any of your 
 
 	./packager unregister Core
 	» the package Core has been unregistered
-	
+
 ### Building Packages
 
 #### Examples
 
 	./packager build Core/Type Core/Fx ART/ART.Element
-	
+
 Which is the same as...
-	
+
 	./packager build +components Core/Type Core/Fx ART/ART.Element
-	
+
 Which builds the passed in components (and their dependancies) using your registered packages.
-	
+
 	./packager build +files Core/Core Core/Fx ART/ART
-	
+
 This builds the passed in files (and their dependancies) using your registered packages.
-	
+
 	./packager build ART/*
-	
+
 Builds every component from ART, and their dependancies, using your registered packages.
-	
+
 	./packager build SomePackage/SomeComponent +packages /Users/kamicane/Sites/some-package
-	
+
 Builds the selected components using your registered packages and a temporary package that resides in /Users/kamicane/Sites/some-package, without having to register it first.
 
 	./packager build SomePackage/SomeComponent -packages Core
-	
+
 Builds the selected components using your registered packages minus the package names you pass to -packages. This lets you build your components without dependancies.
 
 	./packager build ART/SomeComponent +use-only ART
-	
+
 Builds the selected components using only ART of your registered packages. This lets you build your components without dependancies.
 
 	./packager build SomePackage/SomeComponent +use-only +packages /Users/kamicane/Sites/some-package
-	
+
 Builds the selected components using none of your registered packages plus the passed in package, without registering it. This lets you build your components without dependancies.
 
 	./packager build +components ART/ART +files ART/ART.Base
-	
+
 You can mix components and files
 
 	./packager build Core/* > mootools.js
-	
+
 This is how you output to a file
 
